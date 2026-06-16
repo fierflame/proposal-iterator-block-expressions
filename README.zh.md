@@ -1,24 +1,25 @@
-Proposal For Iterator Block Expressions
+迭代器块表达式提案
 ========
 
-## Status
+## 当前状态
 
-> **Stage 0 (Strawperson)**  
-> This proposal is currently at Stage 0. It is an early-stage idea intended to spark discussion within the TC39 committee regarding a specific pain point in JavaScript iteration. The syntax and semantics are highly subject to change and may be rejected. Community feedback and prior art comparisons are highly encouraged.
+> **Stage 0 (Strawperson / 稻草人阶段)**  
+> 本提案目前处于 Stage 0。这是一个处于早期探索阶段的想法，旨在向 TC39 委员会展示 JavaScript 迭代处理中的特定痛点，并引发初步讨论。此时的语法和语义具有高度可变性，甚至可能被否决。我们非常欢迎社区提供反馈以及相关的现有实践（Prior Art）对比。
 
-## Proposal Details
+## 提案内容
 
-The `block {}` can be defined as a syntactic sugar similar to `for..of`, but it differs from `for..of` in the following ways:
-- `block {}` will pass the result of the last statement to `iterator.next`. 
-- `block {}` is an expression rather than a statement, so it’s allowed to be nested within expressions.
-- The arguments of `block {|prm| }` are variable, even those of variables wrapped in `using` or `await using`.
+可以将 `block {}` 定义为类似 `for..of` 的语法糖，但与 `for..of` 有以下区别：
 
-The commonalities between `block {}` and `for..of`:
+- `block {}` 会将最后一条语句的结果传递给 `iterator.next`
+- `block {}` 是表达式，而不是语句，所以允许嵌套在表达式中
+- `block {|prm| }` 的参数是可变的，即便是被 `using` 或 `await using` 的变量
 
-- Both utilize `Symbol.iterator` and `Symbol.asyncIterator`
-- All support the use of control statements such as `yield`, `yield*`, `return`, `throw`, `continue`, `break`, `continue label`, `break label`, and `await` internally. 
+`block {}` 与 `for..of` 的共同点：
 
-### Comparison of `block {}` vs. `for...of` Syntax
+- 都是利用 `Symbol.iterator` 和 `Symbol.asyncIterator`
+- 都支持在内部使用 `yield`、 `yield*`、`return`、 `throw`、`continue`、`break`、`continue label`、`break label`、 `await` 等控制语句
+
+### `block {}` 近似 `for..of` 语法对比
 
 | `block {}`                                                | `for..of`                                                                 |
 | --------------------------------------------------------- | ------------------------------------------------------------------------- |
@@ -54,14 +55,15 @@ The commonalities between `block {}` and `for..of`:
 | `[...array] await using {\|prm\| doSameThing(); }`        | `for (await using _ of [...array]){ let prm = _; doSameThing(); }`        |
 
 
-### Handling labels when a single statement contains multiple `block {}`s
+### 一条语句中有多个 `block {}`时，对于 label 处理
 
-For the following usage:
+对于以下用法：
+
 ```javascript
 label: let result = [iterable1 { continue label; }, iterable2 { continue label; }]
 ```
 
-Its equivalent to
+其等价于
 
 ```javascript
 label1: const __result1 = iterable1 { continue label1; }
@@ -70,15 +72,14 @@ let result = [__result1, __result2];
 ```
 
 
-### How to Determine Whether It Is a `block {}`
+### 如何界定是否为 `block {}`
 
-- In cases where `()` and `[]` are used within expressions rather than as statements, they are always treated as a block `{}`.
-- Otherwise, the `block` will only be considered a `block {}` if it appears on the same line as at least one of the following: `await using`, `using`, `await`, or `{`.
+- 在 `()` `[]` 等内被是为表达式的而非语句的情况，一律视作 `block {}`
+- 否则 `block` 与 `await using`、 `using`、`await`、`{` 中至少一者在同一行，才会被视作 `block {}`
 
-Can be regarded as an example of `block {}`:
+可以被视作 `block {}` 的例子：
 
 ```javascript
-
 block {}
 
 block await {}
@@ -106,9 +107,9 @@ block await using
 await {}
 
 /**
-* Due to the placement of line breaks, the above-mentioned cases cannot be considered as sentence endings and are therefore all treated as `block {}` usage.
-* The following types can only be used as expressions and cannot be split into two statements; therefore, they are all treated as `block {}` usage.
-*/
+ * 上面集中情况，因换行所在位置，无法视为语句结束，所以均被视为 `block {}` 用法
+ * 以下几种都只能作为表达式，而不能拆分成两条语句，所以也均被视为 `block {}` 用法
+ */
 
 (block
 {});
@@ -130,7 +131,7 @@ await using await {}) {
 
 ```
 
-Examples that cannot be regarded as `block {}`:
+不能被视作 `block {}` 的例子：
 
 ```javascript
 block
@@ -149,29 +150,29 @@ block
 await using await {}
 
 ```
-In these examples, the portion preceding the line break at the point of line breaking can already be considered a complete statement; therefore, from a parsing perspective, it cannot be treated as a `block {}` usage.
+这些例子中，正在换行处，换行前的部分，已经可以视作完整语句，所以在解析上，无法视作 `block {}` 用法
 
-### Definition of Multiple `await` Statements
+### 多处 await 的界定
 
 ```javascript
 let result = await (await fn()) await using await {}
 ```
 
-- The first `await` is treated as an `await` on the return value of the `block {}`, because `await` has lower priority than `block {}`, and it’s executed last. 
-- The second `await`, being enclosed in parentheses, belongs to the `block` section and is the first `await` to be executed. 
-- The third `await`, since it is immediately followed by `using`, should be treated as a single unit with `using`—that is, as an `await using`. It falls under the `await` in `for (await using _ of block)`.
-- After the fourth `await`, since it is immediately followed by `{`, it belongs to the `await` within `for await (let _ of block)`.
+- 第一个 `await` 因为 `await` 优先级低于 `block {}` 所以被视作对 `block{}` 的返回值的 `await`，最后执行
+- 第二个 `await` 因为被括号包裹，所以属于 `block` 部分，是最先执行的 `await`
+- 第三个 `await` 因为其后紧跟 `using`，所以应与 `using` 视作一体 `await using`，属于 `for (await using _ of block)` 中的 `await`
+- 第四个 `await` 后面，因为其后紧跟着 `{`，其属于 `for await (let _ of block)` 中的 `await`
 
-### Handling Return Values
+### 返回值的处理
 
-- If execution is interrupted by `return`, `throw`, a block label (the label comes from an outer scope), or a continue label (the label comes from an outer scope), there’s no need to consider the return value since it will no longer be used.
-- By default, the return value is the `iterator.next().value` when `iterator.next().done === true`, or the generator’s return value.
-- If interrupted by a `block`, the return value should be `undefined`.
-- `continue` merely ends the current iteration; since the loop hasn't ended yet, there's no need to discuss its return value.
+- 如果被 `return`、`throw`、`block label`(label 来自更外层)、`continue label`(label 来自更外层) 等中断执行，因其不再使用返回值，所以无需考虑返回值
+- 默认情况下，返回值为 `iterator.next().done === true` 时的 `iterator.next().value`，或生成器的返回值
+- 如果是被 `block`中断，则返回值应为 `undefined`
+- `continue` 只是结束当前循环，循环未结束，所以也无需讨论返回值
 
-#### Considerations for the Return Value of `block{}` by Default
+#### 默认情况下 `block{}` 返回值的考量
 
-At this stage, if you execute the generator and only want to obtain its final return value, there is no simple syntax available. You’ll need to implement it using multiple statements as follows:
+现阶段，如果执行生成器，只取生成器最终的返回值，没有简单的语法，需要通过以下多条语句实现：
 
 ```javascript
 let result = generator();
@@ -181,30 +182,30 @@ while(!result.done){
 result = result.value;
 ```
 
-However, if you define the return value of `block{}` as `iterator.next().value` when `iterator.next().done === true`, or as the generator’s return value, it can be simplified to:
+但将 `block{}` 返回值定为 `iterator.next().done === true` 时的 `iterator.next().value`，或生成器的返回值，则可以简化为：
 
 ```javascript
 let result = generator() {};
 ```
 
-#### Considerations for Returning `undefined` When Using `break`
+#### `break` 时，返回值为 `undefined` 的考量
 
-- Although at the current stage, the community has not considered cases where statements other than `else` and `if` are combined, should we in the future implement `block{}else{}`, and if a `break` statement causes execution to proceed to the `else{}` block, then the return value of the `block` could be defined as the value of the last statement in the `else{}` block (in the absence of an `else` clause or when the `else{}` block contains no statements, the return value would be `undefined`). 
-- If the community futurely supports carrying expressions after a `break`, the return value of `block{}` could be defined as the value of the expression carried after the `break`.
-- If both of the above are implemented simultaneously, consider omitting the `else{}` block when a statement follows the `break`.
+- 虽然当前阶段，社区没有考虑 `else` 与 `if` 之外的语句结合的情况，但倘若未来实现 `block{}else{}` ，且 `break` 后会走`else{}`，则 `block` 的返回值可以定义为`else{}` 最后一条语句的值（没有 `else`情况或`else{}`内为空语句，则返回值为 `undefined`）。
+- 若社区未来实现 `break` 后支持携带表达式，则可以将 `block{}` 的返回值定义为 `break` 后携带的表达式的值。
+- 若同时实现以上两种，可考虑在 `break` 后带有表达式时，不走 `else{}`
 
-### Why not treat `block {}` as syntactic sugar for `block(() => {})`?
+### 为何不将 `block {}` 作为 `block(() => {})` 的语法糖
 
-- The flow control statements such as `break`, `break label`, and `continue label` will be unavailable.
-- `return` is equivalent to `continue` within a loop, except that it includes a return value. This means that `continue` and `return` overlap significantly. 
-- If `break`, `break label`, `continue label`, and `return` are forcibly treated as standard flow-control constructs, this implies that, in implementation, special errors that are not caught by `catch` must also be handled. Moreover, if an asynchronous `block {}` is invoked in a synchronous context, flow control still remains unavailable.
+- 将无法使用 `break`、 `break label`、`continue label`等流程控制语句
+- `return`将相当于循环中的 `continue` 只是带有返回值，这意味着 `continue` 与 `return` 高度重叠
+- 如强行将`break`、 `break label`、`continue label`、`return` 作为标准流程控制，这意味着，实现上，还需要实现不被 `catch` 捕获的特殊错误。而且，如果是在同步环境下调用异步`block {}`，流程控制依然不可用。
 
 
-### Application Examples
+### 应用举例
 
-#### Declarative UI and Declarative Configuration
+#### 声明式 UI 与声明式配置
 
-Functions for declarative use
+用于声明式使用的函数
 
 ```javascript
 /** @type {{children: any[]; tag: string}[]} */
@@ -218,7 +219,7 @@ const stack = [];
 function element(tag) {
   const parent = stack[stack.length - 1];
   if (!parent) {
-    throw new Error(`[Render Error]: The node <${tag}> cannot be created outside the UI tree!`); 
+    throw new Error(`[Render Error]: 节点 <${tag}> 不能在 UI 树外部创建！`);
   }
   const node = {
     type: 'element',
@@ -251,7 +252,7 @@ function element(tag) {
 function text(content) {
   const parent = stack[stack.length - 1];
   if (!parent) {
-    throw new Error(`[Render Error]: Text node "${content}" cannot be created outside the UI tree!`);
+    throw new Error(`[Render Error]: 文本节点 "${content}" 不能在 UI 树外部创建！`);
   }
   const textNode = {
     type: 'text',
@@ -277,7 +278,7 @@ function root() {
 }
 ```
 
-Usage Example
+使用实例
 
 ```javascript
 
@@ -295,7 +296,7 @@ const ui = root() {
 console.log(JSON.stringify(ui, null, 2));
 ```
 
-Approximate fallback to the following form:
+近似降级为以下形式：
 
 ```javascript
 const ui = root();
@@ -313,11 +314,11 @@ for (const _ of ui) {
 console.log(JSON.stringify(ui, null, 2));
 ```
 
-#### Reactive UI
+#### 响应式 UI
 
-For reactive UI, if only the attributes are reactive, you can pass a `ref` directly into the attribute.
+对于响应式 UI，如果只是属性的响应式，可以直接将 ref 传入属性。
 
-If you need reactivity for control flows like `if` or `for`, you can use the `reactive` function as shown below:
+如果是是 if / for 等的响应式，则可以引入 reactive 函数，如下：
 
 ```javascript
 
@@ -338,7 +339,7 @@ function reactive(fn) {
 ```
 
 
-Usage Example
+使用实例
 
 ```javascript
 
@@ -362,7 +363,7 @@ const ui = root() {
 
 ### `unless() {}`
 
-Definition:
+定义：
 
 ```javascript
 function* unless(condition) {
@@ -370,7 +371,7 @@ function* unless(condition) {
 }
 ```
 
-Usage:
+用例：
 
 ```javascript
 unless(a > b) {
@@ -380,7 +381,7 @@ unless(a > b) {
 
 #### `where() { when() {}}` `where() { is() {}}` `select() { when() {}}` `select() { is() {}}` `select() { other() {}}`
 
-Definition:
+定义：
 
 ```javascript
 const stack = [];
@@ -388,7 +389,7 @@ const stack = [];
 function is(condition) {
   const item = stack[stack.length - 1];
   if (!item) {
-    throw new Error(`[Error]: 'is' must be used inside 'where' or 'select'`);
+    throw new Error(`[Error]: is 必须在 where/select 内部`);
   }
   if (Object.is(item[0], condition)) { return item[1] = yield item[0]; }
 }
@@ -396,14 +397,14 @@ function is(condition) {
 function when(condition) {
   const item = stack[stack.length - 1];
   if (!item) {
-    throw new Error(`[Error]: 'when' must be used inside 'where' or 'select'`);
+    throw new Error(`[Error]: when 必须在 where/select 内部`);
   }
   if (condition(item[0])) { return item[1] = yield item[0]; }
 }
 function other(condition) {
   const item = stack[stack.length - 1];
   if (!item) {
-    throw new Error(`[Error]: 'when' must be used inside 'where' or 'select'`);
+    throw new Error(`[Error]: when 必须在 where/select 内部`);
   }
   if (item.length === 1) { return item[1] = yield item[0]; }
 }
@@ -428,7 +429,7 @@ function *select(condition) {
 }
 ```
 
-Usage:
+用例：
 
 ```javascript
 where(n) {
@@ -462,7 +463,7 @@ const result = select(n) {
 ```
 
 
-### Fallback Example
+### 降级实例
 
 ```javascript
 label: const result = generator() await using await {|prm|
@@ -488,7 +489,7 @@ label: const result = generator() await using await {|prm|
 }
 ```
 
-Fallback to:
+降级为：
 
 ```javascript
 let __result;
@@ -513,7 +514,7 @@ let __result;
       } else if (if2()) {
         _isNormalExit = false;
         /**
-         * If `break value` is supported in the future, the break value will be:
+         * 如果后续支持 break value，则 break value 为：
          * __result = val2();
          * _isNormalExit = true;
          */
@@ -525,7 +526,7 @@ let __result;
       } else if (if4()) {
         _lastResult = if4();
         _nextInput = _lastResult;
-        // 💡 Pass directly to the JS engine, skipping the current iteration
+        // 💡 直接透传给 JS 引擎，跳过当前迭代
         continue label;
 
       } else if (if5()) {
@@ -543,7 +544,7 @@ let __result;
       _nextInput = _lastResult;
 
     } catch (err) {
-      // Attempt to delegate the exception to the iterator for handling
+      // 尝试将异常交给迭代器处理
       if (_iterator.throw) {
         await _iterator.throw(err);
       } else {
@@ -556,10 +557,11 @@ let __result;
       }
     }
   }
+
   if (!_isNormalExit) {
     __result = undefined;
     {
-      // If `else` is supported in the future, it will be executed here
+      // 如果后续支持 else，则 else 在此执行
     }
   }
 }
