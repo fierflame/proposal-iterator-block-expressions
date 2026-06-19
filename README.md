@@ -1,11 +1,6 @@
 Proposal For Iterator Block Expressions
 ========
 
-## Status
-
-> **Stage 0 (Strawperson)**  
-> This proposal is currently at Stage 0. It is an early-stage idea intended to spark discussion within the TC39 committee regarding a specific pain point in JavaScript iteration. The syntax and semantics are highly subject to change and may be rejected. Community feedback and prior art comparisons are highly encouraged.
-
 ## Proposal Details
 
 The `block {}` can be defined as a syntactic sugar similar to `for..of`, but it differs from `for..of` in the following ways:
