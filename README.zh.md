@@ -13,6 +13,9 @@
 - `block {}` 会将最后一条语句的结果传递给 `iterator.next`
 - `block {}` 是表达式，而不是语句，所以允许嵌套在表达式中
 - `block {|prm| }` 的参数是可变的，即便是被 `using` 或 `await using` 的变量
+- `block {}` 允许后跟 `else {}` 形成 `block {} else {}` 结构
+- `block {}` 新引入 `return break` 语法与 `iteratorReturnResult.break` 可选属性
+- `block {} else {}` 是表达式
 
 `block {}` 与 `for..of` 的共同点：
 
@@ -167,7 +170,7 @@ let result = await (await fn()) await using await {}
 
 - 如果被 `return`、`throw`、`block label`(label 来自更外层)、`continue label`(label 来自更外层) 等中断执行，因其不再使用返回值，所以无需考虑返回值
 - 默认情况下，返回值为 `iterator.next().done === true` 时的 `iterator.next().value`，或生成器的返回值
-- 如果是被 `block`中断，则返回值应为 `undefined`
+- 如果是被 `block`中断，则返回值应为 `undefined` 或 `else {}` 中的最后一条实际执行语句的返回值
 - `continue` 只是结束当前循环，循环未结束，所以也无需讨论返回值
 
 #### 默认情况下 `block{}` 返回值的考量
@@ -190,9 +193,15 @@ let result = generator() {};
 
 #### `break` 时，返回值为 `undefined` 的考量
 
-- 虽然当前阶段，社区没有考虑 `else` 与 `if` 之外的语句结合的情况，但倘若未来实现 `block{}else{}` ，且 `break` 后会走`else{}`，则 `block` 的返回值可以定义为`else{}` 最后一条语句的值（没有 `else`情况或`else{}`内为空语句，则返回值为 `undefined`）。
+- 虽然当前阶段，社区没有考虑 `else` 与 `if` 之外的语句结合的情况，但实现 `block{}else{}` 后，让 `break` 走`else{}`，且将 `block` 的返回值定义为`else{}` 最后一条语句的值（没有 `else`情况或`else{}`内为空语句，则返回值为 `undefined`）。
 - 若社区未来实现 `break` 后支持携带表达式，则可以将 `block{}` 的返回值定义为 `break` 后携带的表达式的值。
 - 若同时实现以上两种，可考虑在 `break` 后带有表达式时，不走 `else{}`
+
+###  `return break` 语法与 `iteratorReturnResult.break` 可选属性
+
+`return break` 用于实现将 `iteratorReturnResult.break` 设为 `true`
+
+即便 `block{}` 中没有 `break`，但倘若是 `return break` 或 `iteratorReturnResult.break == true`则依然按照 `break` 的逻辑执行 `else {}` 并将其结果作为实际返回值（如果没有 `else {}` 则返回 `undefined`）
 
 ### 为何不将 `block {}` 作为 `block(() => {})` 的语法糖
 
@@ -361,13 +370,17 @@ const ui = root() {
 ```
 
 
-### `unless() {}`
+### `unless() {} else {}`
 
 定义：
 
 ```javascript
 function* unless(condition) {
-  if (!condition) { return yield; }
+  if (!condition) {
+    return yield;
+  } else {
+    return break;
+  }
 }
 ```
 
@@ -375,6 +388,8 @@ function* unless(condition) {
 
 ```javascript
 unless(a > b) {
+  
+} else {
   
 }
 ```
@@ -409,9 +424,12 @@ function other(condition) {
   if (item.length === 1) { return item[1] = yield item[0]; }
 }
 function *where(condition) {
-  stack.push([condition]);
+  const item = [condition];
+  stack.push(item);
   try {
-    return yield condition;
+    const result = yield condition;
+    if (item.length === 1) { return break; }
+    return result;
   } finally {
     stack.pop();
   }
@@ -422,6 +440,7 @@ function *select(condition) {
   stack.push(item);
   try {
     yield condition;
+    if (item.length === 1) { return break; }
     return item[1];
   } finally {
     stack.pop();
@@ -443,8 +462,10 @@ where(n) {
     
   }
   other {
-
+    // other 与 else 使用上有一定却别，other 之后的 is 和 when 都不会执行，而且若不是社区不接受 `block {} else {}` 则也可以用 other 代替
   }
+} else {
+
 }
 const result = select(n) {
   is(1) {
@@ -459,6 +480,8 @@ const result = select(n) {
   other {
     
   }
+} else {
+
 }
 ```
 
@@ -471,7 +494,6 @@ label: const result = generator() await using await {|prm|
     val1()
   } else if (if2()) {
     break;
-    // break val2();
   } else if (if3()) {
     val3();
     continue;
@@ -483,9 +505,11 @@ label: const result = generator() await using await {|prm|
     break otherLabel;
   } else if (if7()) {
     return val7();
+  } else if (if8()) {
+    break val8();
   }
 } else {
-  val8()
+  val9()
 }
 ```
 
@@ -494,13 +518,17 @@ label: const result = generator() await using await {|prm|
 ```javascript
 let __result;
 {
-  let _isNormalExit = true;
+  let _toRunElse = false;
   let _nextInput = undefined;
   const _iterator = generator()[Symbol.asyncIterator]();
 
   label: while (true) {
-    const { value: prm, done } = await _iterator.next(_nextInput);
+    const { value: prm, done, break: returnBreak } = await _iterator.next(_nextInput);
     if (done) {
+      if (returnBreak) {
+        _toRunElse = true;
+        break;
+      }
       __result = prm;
       break;
     }
@@ -512,12 +540,7 @@ let __result;
       if (if1()) {
         _lastResult = val1();
       } else if (if2()) {
-        _isNormalExit = false;
-        /**
-         * 如果后续支持 break value，则 break value 为：
-         * __result = val2();
-         * _isNormalExit = true;
-         */
+        _toRunElse = true;
         break;
       } else if (if3()) {
         _lastResult = val3();
@@ -526,7 +549,6 @@ let __result;
       } else if (if4()) {
         _lastResult = if4();
         _nextInput = _lastResult;
-        // 💡 直接透传给 JS 引擎，跳过当前迭代
         continue label;
 
       } else if (if5()) {
@@ -535,16 +557,19 @@ let __result;
         continue otherLabel;
 
       } else if (if6()) {
-        _isNormalExit = false;
+        _toRunElse = true;
         break otherLabel;
 
       } else if (if7()) {
+        return val7();
+      } else if (if8()) {
+        __result = val8();
+        _toRunElse = false;
         return val7();
       }
       _nextInput = _lastResult;
 
     } catch (err) {
-      // 尝试将异常交给迭代器处理
       if (_iterator.throw) {
         await _iterator.throw(err);
       } else {
@@ -558,10 +583,10 @@ let __result;
     }
   }
 
-  if (!_isNormalExit) {
+  if (_toRunElse) {
     __result = undefined;
     {
-      // 如果后续支持 else，则 else 在此执行
+      __result = val9();
     }
   }
 }

@@ -12,6 +12,9 @@ The `block {}` can be defined as a syntactic sugar similar to `for..of`, but it 
 - `block {}` will pass the result of the last statement to `iterator.next`. 
 - `block {}` is an expression rather than a statement, so it’s allowed to be nested within expressions.
 - The arguments of `block {|prm| }` are variable, even those of variables wrapped in `using` or `await using`.
+- `block {}` now allows an optional trailing `else {}` to form a `block {} else {}` construct.
+- `block {}` introduces a new `return break` syntax, along with an optional `iteratorReturnResult.break` property.
+- `block {} else {}` is an expression.
 
 The commonalities between `block {}` and `for..of`:
 
@@ -166,7 +169,7 @@ let result = await (await fn()) await using await {}
 
 - If execution is interrupted by `return`, `throw`, a block label (the label comes from an outer scope), or a continue label (the label comes from an outer scope), there’s no need to consider the return value since it will no longer be used.
 - By default, the return value is the `iterator.next().value` when `iterator.next().done === true`, or the generator’s return value.
-- If interrupted by a `block`, the return value should be `undefined`.
+- If interrupted by a `block`, the return value should be either `undefined` or the return value of the last actually executed statement within the `else {}` block.
 - `continue` merely ends the current iteration; since the loop hasn't ended yet, there's no need to discuss its return value.
 
 #### Considerations for the Return Value of `block{}` by Default
@@ -189,9 +192,15 @@ let result = generator() {};
 
 #### Considerations for Returning `undefined` When Using `break`
 
-- Although at the current stage, the community has not considered cases where statements other than `else` and `if` are combined, should we in the future implement `block{}else{}`, and if a `break` statement causes execution to proceed to the `else{}` block, then the return value of the `block` could be defined as the value of the last statement in the `else{}` block (in the absence of an `else` clause or when the `else{}` block contains no statements, the return value would be `undefined`). 
+- Although the community is not currently considering combining `else` with statements other than `if`, the implementation of `block {} else {}` would allow `break` to fall through to the `else {}` block. In this case, the return value of the `block` would be defined as the value of the last statement executed within the `else {}` block (returning `undefined` if there is no `else` block or if the `else {}` block contains no statements).
 - If the community futurely supports carrying expressions after a `break`, the return value of `block{}` could be defined as the value of the expression carried after the `break`.
 - If both of the above are implemented simultaneously, consider omitting the `else{}` block when a statement follows the `break`.
+
+### `return break` Syntax and the Optional `iteratorReturnResult.break` Property
+
+The `return break` syntax is used to set `iteratorReturnResult.break` to `true`.
+
+Even if there is no `break` statement within the `block {}`, if `return break` is encountered or `iteratorReturnResult.break == true`, the `else {}` block will still be executed following the `break` logic. The result of this execution becomes the actual return value (if there is no `else {}` block, `undefined` is returned).
 
 ### Why not treat `block {}` as syntactic sugar for `block(() => {})`?
 
@@ -366,7 +375,11 @@ Definition:
 
 ```javascript
 function* unless(condition) {
-  if (!condition) { return yield; }
+  if (!condition) {
+    return yield;
+  } else {
+    return break;
+  }
 }
 ```
 
@@ -374,6 +387,8 @@ Usage:
 
 ```javascript
 unless(a > b) {
+  
+} else {
   
 }
 ```
@@ -408,9 +423,12 @@ function other(condition) {
   if (item.length === 1) { return item[1] = yield item[0]; }
 }
 function *where(condition) {
-  stack.push([condition]);
+  const item = [condition];
+  stack.push(item);
   try {
-    return yield condition;
+    const result = yield condition;
+    if (item.length === 1) { return break; }
+    return result;
   } finally {
     stack.pop();
   }
@@ -421,6 +439,7 @@ function *select(condition) {
   stack.push(item);
   try {
     yield condition;
+    if (item.length === 1) { return break; }
     return item[1];
   } finally {
     stack.pop();
@@ -442,8 +461,10 @@ where(n) {
     
   }
   other {
-
+    // There are some differences in usage between `other` and `else`. The `is` and `when` clauses following `other` will not be executed. Furthermore, if the community were to accept it, `other` could also be used as a substitute for `block {} else {}`.
   }
+} else {
+
 }
 const result = select(n) {
   is(1) {
@@ -458,6 +479,8 @@ const result = select(n) {
   other {
     
   }
+} else {
+
 }
 ```
 
@@ -470,7 +493,6 @@ label: const result = generator() await using await {|prm|
     val1()
   } else if (if2()) {
     break;
-    // break val2();
   } else if (if3()) {
     val3();
     continue;
@@ -482,9 +504,11 @@ label: const result = generator() await using await {|prm|
     break otherLabel;
   } else if (if7()) {
     return val7();
+  } else if (if8()) {
+    break val8();
   }
 } else {
-  val8()
+  val9()
 }
 ```
 
@@ -493,13 +517,17 @@ Fallback to:
 ```javascript
 let __result;
 {
-  let _isNormalExit = true;
+  let _toRunElse = false;
   let _nextInput = undefined;
   const _iterator = generator()[Symbol.asyncIterator]();
 
   label: while (true) {
-    const { value: prm, done } = await _iterator.next(_nextInput);
+    const { value: prm, done, break: returnBreak } = await _iterator.next(_nextInput);
     if (done) {
+      if (returnBreak) {
+        _toRunElse = true;
+        break;
+      }
       __result = prm;
       break;
     }
@@ -511,12 +539,7 @@ let __result;
       if (if1()) {
         _lastResult = val1();
       } else if (if2()) {
-        _isNormalExit = false;
-        /**
-         * If `break value` is supported in the future, the break value will be:
-         * __result = val2();
-         * _isNormalExit = true;
-         */
+        _toRunElse = true;
         break;
       } else if (if3()) {
         _lastResult = val3();
@@ -525,7 +548,6 @@ let __result;
       } else if (if4()) {
         _lastResult = if4();
         _nextInput = _lastResult;
-        // 💡 Pass directly to the JS engine, skipping the current iteration
         continue label;
 
       } else if (if5()) {
@@ -534,16 +556,19 @@ let __result;
         continue otherLabel;
 
       } else if (if6()) {
-        _isNormalExit = false;
+        _toRunElse = true;
         break otherLabel;
 
       } else if (if7()) {
+        return val7();
+      } else if (if8()) {
+        __result = val8();
+        _toRunElse = false;
         return val7();
       }
       _nextInput = _lastResult;
 
     } catch (err) {
-      // Attempt to delegate the exception to the iterator for handling
       if (_iterator.throw) {
         await _iterator.throw(err);
       } else {
@@ -556,10 +581,10 @@ let __result;
       }
     }
   }
-  if (!_isNormalExit) {
+  if (_toRunElse) {
     __result = undefined;
     {
-      // If `else` is supported in the future, it will be executed here
+      __result = val9();
     }
   }
 }
