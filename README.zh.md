@@ -418,18 +418,6 @@ function other(condition) {
   }
   if (item.length === 1) { return item[1] = yield item[0]; }
 }
-function *where(condition) {
-  const item = [condition];
-  stack.push(item);
-  try {
-    const result = yield condition;
-    if (item.length === 1) { return break; }
-    return result;
-  } finally {
-    stack.pop();
-  }
-}
-
 function *select(condition) {
   const item = [condition];
   stack.push(item);
@@ -446,22 +434,6 @@ function *select(condition) {
 用例：
 
 ```javascript
-where(n) {
-  is(1) {
-    
-  }
-  when(k => 2< k && k < 10) {
-    
-  }
-  when(k => 20< k && k < 50) {
-    
-  }
-  other {
-    // other 与 else 使用上有一定却别，other 之后的 is 和 when 都不会执行，而且若不是社区不接受 `block {} else {}` 则也可以用 other 代替
-  }
-} else {
-
-}
 const result = select(n) {
   is(1) {
     
@@ -473,7 +445,7 @@ const result = select(n) {
     
   }
   other {
-    
+    // other 与 else 使用上有一定却别，other 之后的 is 和 when 依然执行，而且若不是社区不接受 `block {} else {}` 则也可以用 other 代替
   }
 } else {
 

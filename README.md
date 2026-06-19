@@ -417,18 +417,6 @@ function other(condition) {
   }
   if (item.length === 1) { return item[1] = yield item[0]; }
 }
-function *where(condition) {
-  const item = [condition];
-  stack.push(item);
-  try {
-    const result = yield condition;
-    if (item.length === 1) { return break; }
-    return result;
-  } finally {
-    stack.pop();
-  }
-}
-
 function *select(condition) {
   const item = [condition];
   stack.push(item);
@@ -445,22 +433,6 @@ function *select(condition) {
 Usage:
 
 ```javascript
-where(n) {
-  is(1) {
-    
-  }
-  when(k => 2< k && k < 10) {
-    
-  }
-  when(k => 20< k && k < 50) {
-    
-  }
-  other {
-    // There are some differences in usage between `other` and `else`. The `is` and `when` clauses following `other` will not be executed. Furthermore, if the community were to accept it, `other` could also be used as a substitute for `block {} else {}`.
-  }
-} else {
-
-}
 const result = select(n) {
   is(1) {
     
@@ -472,7 +444,7 @@ const result = select(n) {
     
   }
   other {
-    
+    // There are some differences in usage between `other` and `else`. The `is` and `when` clauses following `other` will still be executed. Furthermore, if the community were to accept it, `other` could also be used as a substitute for `block {} else {}`.
   }
 } else {
 
